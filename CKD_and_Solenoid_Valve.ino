@@ -5,6 +5,11 @@
 */
 
 
+
+const bool DEBUG = true;
+
+
+
 //CKD valve
 #define Valve_Control_PIN 9  //analogWrite
 String inputString = "";
@@ -13,9 +18,7 @@ int level_percentage = 0;
 float level_PWM = 0.0f;
 const float percentage_to_PWM = 2.55; //假設0V = 0%、5V = 100%，因為PWM是0~254，故1% = 255/100 PWM
 
-//Solenoid valve
-#define solenoidPin 4    //digitalWrite
-int solenoidSwitch = 0; //預設為關
+
 
 void setup()                         
 {
@@ -24,11 +27,9 @@ void setup()
   //CKD valve (比例閥)
   pinMode(Valve_Control_PIN, OUTPUT);
   analogWrite(Valve_Control_PIN, 0);
-
-  //Solenoid valve (電磁閥)
-  pinMode(solenoidPin, OUTPUT);           //Sets the pin as an output
-  digitalWrite(solenoidPin, LOW);
 }
+
+
 
 void loop() 
 { 
@@ -42,46 +43,26 @@ void loop()
   {
     char c = Serial.read();
     inputString += c;
+
+    /* When reading the command end */
     if (c == '\n') 
     {
-      stringComplete = true;   
-    }
-
-    if (stringComplete) 
-    {
-      for (int i = 0; i < inputString.length(); i++) 
-      {
-        if (inputString.substring(i, i + 1) == " ")
-        {
-          level_percentage = inputString.substring(0, i).toInt();
-          solenoidSwitch = inputString.substring(i + 1).toInt();
-          break;
-        }
-      }
+      level_percentage = inputString.toInt();
 
       level_PWM = percentage_to_PWM * level_percentage;
-      Serial.print("level(%): ");
-      Serial.println(level_percentage);
-      Serial.print("level(255): ");
-      Serial.println(level_PWM, 2);
+      if(DEBUG){
+          Serial.print("level(%): ");
+          Serial.println(level_percentage);
+          Serial.print("level(255): ");
+          Serial.println(level_PWM, 2);
+      }
       analogWrite(Valve_Control_PIN, level_PWM);
-      stringComplete = false;
+      
       inputString = "";
       delay(10);
-
-
-      if (solenoidSwitch == 0)
-      {
-        digitalWrite(solenoidPin, LOW);    //Switch Solenoid OFF
-        Serial.println("Switch Solenoid OFF");
-      }  
-      if (solenoidSwitch == 1)
-      {
-        digitalWrite(solenoidPin, HIGH);    //Switch Solenoid ON
-        Serial.println("Switch Solenoid ON");
-      }
-    }
-  }
-}
+    }//end if
+  }//end while
+  
+}//end loop
 
 
