@@ -6,7 +6,7 @@
 
 
 
-const bool DEBUG = true;
+const bool DEBUG = false;
 
 
 
@@ -30,13 +30,16 @@ bool flag_left_sv2 = false;
 bool flag_left_sv3 = false;
 bool flag_left_sv4 = false;
 
+unsigned long delay_time = 50;
+unsigned long last_loop_time;
+
 
 
 void setup()                         
 {
   /* Waiting the arduino setup... */
   delay(1000);
-  Serial.begin(9600);
+  Serial.begin(14400);
   Serial.print("Start up...\n");
   
   //CKD valve
@@ -58,6 +61,12 @@ void setup()
 
 void loop() 
 { 
+  if(millis()- last_loop_time < delay_time)
+  {
+    return;
+  }
+
+    
   // 假設0V = 0%、 5V = 100%，又因為PWM是0~254，故1% = 255/100 PWM，
   // 也就是輸入x，則輸出值為100/255*x
   // 經廠商測試，閥與實驗室現有空壓機搭配，可接受的電壓值的量大約是2.5V
@@ -71,7 +80,14 @@ void loop()
     char c = Serial.read();
     input_command += c;
     /* When reading the command end */
-    if (c == '\n')  break;
+    if (c == '\n'){
+        if(DEBUG)
+        {
+          String debug = "\n[Receive]" + input_command;
+          Serial.print(debug);
+        }
+      break;
+    }
   }
 
   /* Perform the command */
@@ -89,23 +105,9 @@ void loop()
       {
         level_percentage = atoi(command);
         level_PWM = level_percentage * percentage_to_PWM;
-        if(DEBUG)
-        {
-          char debug[50];
-          char temp[10];
-          dtostrf(level_PWM, 3, 2, temp);
-          sprintf(debug, "[Debug] air level pwm: %s\n", temp);
-          Serial.print(debug);
-        }
       }else if(command_index == 1)
       {
          flag_left_sv1 = atoi(command);
-         if(DEBUG)
-         {
-          char debug[50];
-           sprintf(debug, "[Debug] flag left sv1: %s => %d\n", command, flag_left_sv1);
-           Serial.print(debug);
-         }
       }else if(command_index == 2)
       {
         flag_left_sv2 = atoi(command);
@@ -121,25 +123,29 @@ void loop()
       command = strtok(NULL, " ");
     }
 
-    if(DEBUG){
-      char debug_info[256];
-      char temp_pwm[10];
-      dtostrf(level_PWM, 3,1, temp_pwm);
-      sprintf(debug_info, "air pressure: (%d/100, %s/255)\nleft solenoiad valve state: %d %d %d %d\n", level_percentage, temp_pwm, flag_left_sv1, flag_left_sv2, flag_left_sv3, flag_left_sv4);
-      Serial.print(debug_info);
+    if(command_index == 5){
+      analogWrite(CKD_PIN, level_PWM);
+      digitalWrite(LSV_PIN1, flag_left_sv1);
+      digitalWrite(LSV_PIN2, flag_left_sv2);
+      digitalWrite(LSV_PIN3, flag_left_sv3);
+      digitalWrite(LSV_PIN4, flag_left_sv4);
+
+      if(DEBUG){
+        char debug_info[256];
+        char temp_pwm[10];
+        dtostrf(level_PWM, 3,1, temp_pwm);
+        sprintf(debug_info, "air pressure: (%d/100, %s/255)\nleft solenoiad valve state: %d %d %d %d\n", level_percentage, temp_pwm, flag_left_sv1, flag_left_sv2, flag_left_sv3, flag_left_sv4);
+        Serial.print(debug_info);
+      }
+    }else{
+        Serial.print("Wrong receive format(INT BOOL BOOL BOOL BOOL)\n");
     }
-    
-    analogWrite(CKD_PIN, level_PWM);
-    digitalWrite(LSV_PIN1, flag_left_sv1);
-    digitalWrite(LSV_PIN2, flag_left_sv2);
-    digitalWrite(LSV_PIN3, flag_left_sv3);
-    digitalWrite(LSV_PIN4, flag_left_sv4);
 
     /* Clear the input string */
     memset(input_string, 0, sizeof(input_string));
   }
 
-  delay(100);
+  last_loop_time = millis();
 }//end loop
 
 
