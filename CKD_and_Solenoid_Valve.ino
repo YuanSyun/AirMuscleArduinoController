@@ -2,7 +2,15 @@
     Name: CKD_and_Solenoid_Valve.ino
     Date: 12/25/2018
     Coder: Yuansyun Ye (yuansyuntw@gmail.com)
+
+    Command Example:
+        Release Air: 0 1 1 1 1 0 1 1 1 1
+        Close the Valve: 0 0 0 0 0 0 0 0 0 0
+        Test Air: 5 0 0 1 0 5 0 0 1 0
+        Keep Air: 10 0 0 0 0 10 0 0 0 0
 */
+
+#include <SparkFun_ADXL345.h>
 
 /* Debug setting */
 const bool DEBUG = false;
@@ -11,8 +19,8 @@ const bool DEBUG = false;
 #define LCKD_PIN 10         // analogWrite
 #define RCKD_PIN 11         // analogWrite
 #define INPUT_COMMAND_SIZE 256
-int LCKD_PRESSURE = A4;     // reading the valve pressure
-int RCKD_PRESSURE = A5;     // reading the valve pressure
+int LCKD_PRESSURE = A2;     // reading the valve pressure
+int RCKD_PRESSURE = A3;     // reading the valve pressure
 int left_percentage = 0;
 int right_percentage = 0;
 int left_pressure = 0;
@@ -50,8 +58,11 @@ char input_string[INPUT_COMMAND_SIZE];
 const int TOTAL_COMMAND_NUMBER = 10;
 
 /* read the CKD valve timer*/
-unsigned long reading_interval = 100;
-unsigned long last_reading_pressure;
+unsigned long reading_data_interval = 100;
+unsigned long last_reading_data;
+
+ADXL345 adxl = ADXL345();
+int pumpState;
 
 
 
@@ -59,7 +70,8 @@ void setup()
 {
   /* Waiting the arduino setup... */
   delay(500);
-  Serial.begin(9600);
+  Serial.begin(57600);
+  //Serial.begin(9600);
   Serial.print("Start up...\n");
   
   //CKD valve
@@ -80,35 +92,52 @@ void setup()
   pinMode(RSV_PIN2, OUTPUT);
   pinMode(RSV_PIN3, OUTPUT);
   pinMode(RSV_PIN4, OUTPUT);
-  digitalWrite(LSV_PIN1, !flag_left_sv1);   //The 16 relay model is low level triger
-  digitalWrite(LSV_PIN2, !flag_left_sv2);
-  digitalWrite(LSV_PIN3, !flag_left_sv3);
-  digitalWrite(LSV_PIN4, !flag_left_sv4);
-  digitalWrite(RSV_PIN1, !flag_right_sv1);
-  digitalWrite(RSV_PIN2, !flag_right_sv2);
-  digitalWrite(RSV_PIN3, !flag_right_sv3);
-  digitalWrite(RSV_PIN4, !flag_right_sv4);
+  DigitalWrite(LSV_PIN1, !flag_left_sv1);   //The 16 relay model is low level triger
+  DigitalWrite(LSV_PIN2, !flag_left_sv2);
+  DigitalWrite(LSV_PIN3, !flag_left_sv3);
+  DigitalWrite(LSV_PIN4, !flag_left_sv4);
+  DigitalWrite(RSV_PIN1, !flag_right_sv1);
+  DigitalWrite(RSV_PIN2, !flag_right_sv2);
+  DigitalWrite(RSV_PIN3, !flag_right_sv3);
+  DigitalWrite(RSV_PIN4, !flag_right_sv4);
+
+  adxl.powerOn();
+  adxl.setRangeSetting(16);
+  adxl.setActivityXYZ(1, 0, 0);
+  adxl.setActivityThreshold(75);
+  adxl.setInactivityXYZ(1, 0, 0);
+  adxl.setInactivityThreshold(75);
+  adxl.setTimeInactivity(10);
+  adxl.setFreeFallThreshold(7);
+  adxl.setFreeFallDuration(30);
+  adxl.InactivityINT(1);
+  adxl.ActivityINT(1);
+  adxl.FreeFallINT(1);
+  
 }
 
 
 
 void loop() 
 { 
-  if(millis() - last_loop_time < delay_time)
-  {
-    return;
-  }
 
   /* Reading the CKD valve pressure value */
-  if(millis() - last_reading_pressure > reading_interval)
+  if(millis() - last_reading_data > reading_data_interval)
   {
     left_pressure = analogRead(LCKD_PRESSURE);
     right_pressure = analogRead(RCKD_PRESSURE);
+    pumpState = GetADXLState();
 
     char pressure[50];
-    sprintf(pressure, "%d %d\n", left_pressure, right_pressure);
+    sprintf(pressure, "%d %d %d\n", left_pressure, right_pressure, pumpState);
     Serial.print(pressure);
-    last_reading_pressure = millis();
+    Serial.flush();
+    last_reading_data = millis();
+  }
+  
+  if(millis() - last_loop_time < delay_time)
+  {
+    return;
   }
 
   /* Reading the serial command */
@@ -184,16 +213,16 @@ void loop()
     }
 
     if(command_index == TOTAL_COMMAND_NUMBER){
+      DigitalWrite(LSV_PIN1, flag_left_sv1);
+      DigitalWrite(LSV_PIN2, flag_left_sv2);
+      DigitalWrite(LSV_PIN3, flag_left_sv3);
+      DigitalWrite(LSV_PIN4, flag_left_sv4);
+      DigitalWrite(RSV_PIN1, flag_right_sv1);
+      DigitalWrite(RSV_PIN2, flag_right_sv2);
+      DigitalWrite(RSV_PIN3, flag_right_sv3);
+      DigitalWrite(RSV_PIN4, flag_right_sv4);
       analogWrite(LCKD_PIN, left_PWM);
       analogWrite(RCKD_PIN, right_PWM);
-      digitalWrite(LSV_PIN1, flag_left_sv1);
-      digitalWrite(LSV_PIN2, flag_left_sv2);
-      digitalWrite(LSV_PIN3, flag_left_sv3);
-      digitalWrite(LSV_PIN4, flag_left_sv4);
-      digitalWrite(RSV_PIN1, flag_right_sv1);
-      digitalWrite(RSV_PIN2, flag_right_sv2);
-      digitalWrite(RSV_PIN3, flag_right_sv3);
-      digitalWrite(RSV_PIN4, flag_right_sv4);
 
       if(DEBUG){
         char debug_info[256];
@@ -211,10 +240,85 @@ void loop()
     }
 
     /* Clear the input string */
-    memset(input_string, 0, sizeof(input_string));
+    //memset(input_string, 0, sizeof(input_string));
   }
 
   last_loop_time = millis();
 }//end loop
 
+/* This is for Uno board, in order to speed up the digital write*/
+void DigitalWrite(int _pin, bool _flag)
+{
+    if(_pin == 2){
+        /* PD2 */
+        if(_flag){
+            PORTD |= B00000100;
+        }else{
+            PORTD &= B11111011;
+        }
+    }else if(_pin == 3){
+        /* PD3 */
+        if(_flag){
+            PORTD |= B00001000;
+        }else{
+            PORTD &= B11110111;
+        }
+    }else if(_pin == 4){
+        /* PD4 */
+        if(_flag){
+            PORTD |= B00010000;
+        }else{
+            PORTD &= B11101111;
+        }
+    }else if(_pin == 5){
+        /* PD5*/
+        if(_flag){
+            PORTD |= B00100000;
+        }else{
+            PORTD &= B11011111;
+        }
+    }else if(_pin == 6){
+        /* PD6 */
+        if(_flag){
+            PORTD |= B01000000;
+        }else{
+            PORTD &= B10111111;
+        }
+    }else if(_pin == 7){
+        /* PD7 */
+        if(_flag){
+            PORTD |= B10000000;
+        }else{
+            PORTD &= B01111111;
+        }
+    }else if(_pin == 8){
+        /* PB0 */
+        if(_flag){
+            PORTB |= B00000001;
+        }else{
+            PORTB &= B11111110;
+        }
+    }else if(_pin == 9){
+        if(_flag){
+            PORTB |= B00000010;
+        }else{
+            PORTB &= B11111101;
+        }
+    }
+}
 
+int GetADXLState()
+{
+    int state = 0;
+    
+  // getInterruptSource clears all triggered actions after returning value
+  // Do not call again until you need to recheck for triggered actions
+  byte interrupts = adxl.getInterruptSource();
+  
+  // Activity
+  if(adxl.triggered(interrupts, ADXL345_ACTIVITY)){
+    state = 1;
+  }
+
+  return state;
+}
